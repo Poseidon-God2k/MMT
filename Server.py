@@ -1,4 +1,6 @@
 import sys, socket
+from os import listdir
+from os.path import isfile, join
 
 from ServerWorker import ServerWorker
 
@@ -10,20 +12,25 @@ class Server:
 		except:
 			print("[Usage: Server.py Server_port]\n")
 		rtspSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
 		rtspSocket.bind(('', SERVER_PORT))
-		rtspSocket.listen(5)
-
-		udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		udpSocket.bind(('', 1026))
-		udpSocket.listen(1)       
-
+		rtspSocket.listen(5)   
+		fileSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		fileSocket.bind(('', 12345))
+		fileSocket.listen(1)
+		n = 0
 		# Receive client info (address,port) through RTSP/TCP session
 		while True:
-			message, clientAddress = udpSocket.recvfrom(2048)
-			udpSocket.sendto(["movie.Mjpeg"].encode(), clientAddress)
 
 			clientInfo = {}
 			clientInfo['rtspSocket'] = rtspSocket.accept()
+			clientInfo['fileSocket'] = fileSocket.accept()
+			# if n == 0:
+			# 	msg = clientInfo['rtspSocket'][0].recv(256).decode()
+			# if msg == "Hello":
+			# 	path = "D:/HK201/Networking/Assignment1_extend/video"
+			# 	clientInfo['rtspSocket'][0].send(" ".join(listdir(path)).encode())
+			# else:
 			ServerWorker(clientInfo).run()		
 
 if __name__ == "__main__":

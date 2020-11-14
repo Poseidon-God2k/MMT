@@ -19,6 +19,7 @@ class Client:
     PLAY = 1
     PAUSE = 2
     TEARDOWN = 3
+    STOP = 0
 
     COUNT =0
 
@@ -37,6 +38,23 @@ class Client:
         self.teardownAcked = 0
         self.connectToServer()
         self.frameNbr = 0
+        self.listfileName = []
+
+
+    def re_connect(self, master, serveraddr, serverport, rtpport, filename):
+        self.master = master
+        self.master.protocol("WM_DELETE_WINDOW", self.handler)
+        self.serverAddr = serveraddr
+        self.serverPort = int(serverport)
+        self.rtpPort = int(rtpport)
+        self.fileName = filename
+        self.rtspSeq = 0
+        self.sessionId = 0
+        self.requestSent = -1
+        self.teardownAcked = 0
+        self.connectToServer()
+        self.frameNbr = 0
+        self.listfileName = []
 
     def createWidgets(self):
         """Build GUI."""
@@ -62,8 +80,8 @@ class Client:
         
         # Create Teardown button
         self.teardown = Button(self.master, width=20, padx=3, pady=3)
-        self.teardown["text"] = "Teardown"
-        self.teardown["command"] = self.exitClient
+        self.teardown["text"] = "Stop"
+        self.teardown["command"] = self.stopMovie
         self.teardown.grid(row=1, column=3, padx=2, pady=2)
 
         # Create a label to display the movie
@@ -76,11 +94,17 @@ class Client:
             self.sendRtspRequest(self.SETUP)
 
     def exitClient(self):
+        """Stop file socket"""
+        self.fileSocket.shutdown(socket.SHUT_RDWR)
+        self.fileSocket.close()
         """Teardown button handler."""
         self.sendRtspRequest(self.TEARDOWN)
         self.master.destroy()  # Close the gui window
         os.remove(CACHE_FILE_NAME + str(self.sessionId) + CACHE_FILE_EXT)  # Delete the cache image from video
 
+    def stopMovie(self):
+        self.sendRtspRequest(self.TEARDOWN)
+    
     def pauseMovie(self):
 
         """Pause button handler."""
@@ -90,17 +114,20 @@ class Client:
     def playMovie(self):
         if self.state == self.INIT:
             self.sendRtspRequest(self.SETUP)
-            if tkMessageBox.askokcancel("Play", "Click OK to continue."):
+            # if tkMessageBox.askokcancel("Play", "Click OK to continue."):
+            #     threading.Thread(target=self.listenRtp).start()
+            #     self.playEvent = threading.Event()
+            #     self.playEvent.clear()
+            #     self.sendRtspRequest(self.PLAY)
+        while True:
+            print(self.state)
+            if self.state == self.READY:
+                # Create a new thread to listen for RTP packets
                 threading.Thread(target=self.listenRtp).start()
                 self.playEvent = threading.Event()
                 self.playEvent.clear()
                 self.sendRtspRequest(self.PLAY)
-        elif self.state == self.READY:
-            # Create a new thread to listen for RTP packets
-            threading.Thread(target=self.listenRtp).start()
-            self.playEvent = threading.Event()
-            self.playEvent.clear()
-            self.sendRtspRequest(self.PLAY)
+                break
 
         
     
@@ -124,9 +151,9 @@ class Client:
             cs = Lb.curselection() 
             
             # Updating label text to selected option 
-            w.config(text=Lb.get(cs)) 
-            self.fileName = Lb.get(cs)
-            self.playMovie()
+            w.config(text=Lb.get(cs))
+            self.stopMovie()
+            self.re_connect(self.master,self.serverAddr,self.serverPort,self.rtpPort,"./video/"+Lb.get(cs))
             # Setting Background Colour 
             # for list in cs: 
                 
@@ -143,21 +170,13 @@ class Client:
         top = Tk() 
         top.geometry('250x275') 
         top.title('Double Click')
-
-        clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        clientSocket.sendto("Hello".encode(), (self.serverAddr, 1026))
-        response, serverAddress = clientSocket.recvfrom(2048)
-
-        print(list(response.decode()))
-        clientSocket.close()
+        response = self.listfileName
         
-        # Creating Listbox 
+        # Creating Listbox
         Lb = Listbox(top, height=6) 
-        # Inserting items in Listbox 
-        Lb.insert(0, 'movie.Mjpeg') 
-        Lb.insert(1, 'Green') 
-        Lb.insert(2, 'Yellow') 
-        Lb.insert(3, 'White') 
+        # Inserting items in Listbox
+        for res in response:
+            Lb.insert(response.index(res), res)
         
         # Binding double click with left mouse 
         # button with go function 
@@ -217,10 +236,27 @@ class Client:
     def connectToServer(self):
         """Connect to the Server. Start a new RTSP/TCP session."""
         self.rtspSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print('connect succeess')
         try:
             self.rtspSocket.connect((self.serverAddr, self.serverPort))
         except:
             tkMessageBox.showwarning('Connection Failed', 'Connection to \'%s\' failed.' % self.serverAddr)
+
+        self.fileSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.fileSocket.connect((self.serverAddr, 12345))
+        except:
+            tkMessageBox.showwarning('Connection Video list Failed', 'Connection to \'%s\' failed.' % self.serverAddr)
+        threading.Thread(target=self.recvFileReply).start()
+        self.fileSocket.send("READFILE".encode())
+    
+    def recvFileReply(self):
+        while True:
+            reply = self.fileSocket.recv(1024).decode("utf-8")
+            if reply:
+                print(reply)
+                self.listfileName = reply.split(' ')
+            
 
     def sendRtspRequest(self, requestCode):
         """Send RTSP request to the server."""
@@ -339,6 +375,7 @@ class Client:
 
                         # Flag the teardownAcked to close the socket.
                         self.teardownAcked = 1
+
 
 
 

@@ -1,6 +1,7 @@
 from random import randint
 import sys, traceback, threading, socket
-
+from os import listdir
+from os.path import isfile, join
 from VideoStream import VideoStream
 from RtpPacket import RtpPacket
 
@@ -25,8 +26,24 @@ class ServerWorker:
 		self.clientInfo = clientInfo
 		
 	def run(self):
+		threading.Thread(target=self.recvFileRequest).start()
 		threading.Thread(target=self.recvRtspRequest).start()
 	
+	def recvFileRequest(self):
+		path = "D:/HK201/Networking/Assignment1_extend/video"
+		msg = " ".join(listdir(path))
+		connSocket = self.clientInfo['fileSocket'][0]
+		while True:            
+			data = connSocket.recv(256).decode("utf-8")
+			if data == "READFILE":
+				connSocket.send(msg.encode())
+
+
+
+
+
+
+
 	def recvRtspRequest(self):
 		"""Receive RTSP request from the client."""
 		connSocket = self.clientInfo['rtspSocket'][0]
@@ -105,6 +122,7 @@ class ServerWorker:
 			self.replyRtsp(self.OK_200, seq[1])
 			
 			# Close the RTP socket
+
 			self.clientInfo['rtpSocket'].close()
 			
 	def sendRtp(self):
